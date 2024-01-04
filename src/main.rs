@@ -7,11 +7,12 @@ use axum::{
     Json, Router,
 };
 use cook_book::{
+    config::{get_config, tracing::init_tracing},
     ctx::Ctx,
     error::Error,
     log_request,
     middle_ware::auth::{ctx_resolver, require_auth},
-    routes_login, tracing::init_tracing,
+    routes_login,
 };
 
 use serde_json::json;
@@ -50,6 +51,7 @@ async fn _ok() -> impl IntoResponse {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    let config = get_config();
 
     init_tracing()?;
 
@@ -65,18 +67,13 @@ async fn main() -> Result<()> {
         .layer(middleware::map_response(main_response_mapper))
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
-                let req_uuid = request
-                    .extensions()
-                    .get::<Ctx>()
-                    .map(|r| r.req_uuid().to_string())
-                    .unwrap_or("None".to_string());
                 tracing::span!(
                     Level::DEBUG,
                     "request",
                     method = %request.method(),
                     uri = %request.uri(),
                     version = ?request.version(),
-                    req_uuid = %req_uuid,
+                    req_uuid = %request.extensions().get::<Ctx>().map(|r| r.req_uuid().to_string()).unwrap_or("None".to_string()),
                 )
             }),
         )
@@ -84,8 +81,13 @@ async fn main() -> Result<()> {
         .layer(CookieManagerLayer::new());
 
     // Create a `TcpListener` using tokio.
-    let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
-    println!("Listening on: {:?}", listener.local_addr().expect("valid addr"));
+    let listener = TcpListener::bind((config.SERVICE_IP, config.SERVICE_PORT))
+        .await
+        .unwrap();
+    println!(
+        "Listening on: {:?}",
+        listener.local_addr().expect("valid addr")
+    );
     axum::serve(listener, app).await.unwrap();
 
     Ok(())

@@ -1,10 +1,10 @@
-use std::env;
-
 use crate::error::Result;
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry};
+
+use super::APP_NAME;
 
 pub fn init_tracing() -> Result<()> {
     Registry::default()
@@ -25,7 +25,7 @@ pub fn init_tracing() -> Result<()> {
                     .with_trace_config(opentelemetry_sdk::trace::config().with_resource(
                         Resource::new(vec![KeyValue::new(
                             opentelemetry_semantic_conventions::resource::SERVICE_NAME.to_string(),
-                            env::var("CARGO_PKG_NAME").expect("crate name should be set by cargo"),
+                            APP_NAME,
                         )]),
                     ))
                     .install_batch(opentelemetry_sdk::runtime::Tokio)
