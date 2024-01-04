@@ -6,6 +6,9 @@ services:
       - "16686:16686"
       - "14268"
       - "14250"
+      - "4317"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
   otel-collector:
     image: otel/opentelemetry-collector:latest
     command: ["--config=/etc/otel-collector-config.yml", "${OTELCOL_ARGS}"]

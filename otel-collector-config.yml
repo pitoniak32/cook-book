@@ -8,16 +8,20 @@ exporters:
   logging:
     loglevel: debug
     
+  otlp/jaeger:
+    endpoint: jaeger-all-in-one:4317
+    tls:
+      insecure: true
   # jaeger:
   #   endpoint: jaeger-all-in-one:14250
   #   tls:
   #     insecure: true
       
 # If you have a honeycomb api key you can use this exporter. (add `otelp` to the exporters array below)
-  otlp:
-   endpoint: "api.honeycomb.io:443"
-   headers:
-     "x-honeycomb-team": ${env:HONEYCOMB_API_KEY} 
+  # otlp:
+  #  endpoint: "api.honeycomb.io:443"
+  #  headers:
+  #    "x-honeycomb-team": ${env:HONEYCOMB_API_KEY} 
 
 processors:
   batch:
@@ -34,9 +38,13 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
+      exporters: [logging, otlp/jaeger]
       processors: [batch]
-      exporters: [logging, otlp] # add exporters to this array to enable them
     metrics:
       receivers: [otlp]
-      processors: [batch]
       exporters: [logging]
+      processors: [batch]
+    logs:
+      receivers: [otlp]
+      exporters: [logging]
+      processors: [batch]

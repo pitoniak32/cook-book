@@ -11,19 +11,16 @@ use cook_book::{
     error::Error,
     log_request,
     middle_ware::auth::{ctx_resolver, require_auth},
-    routes_login,
+    routes_login, tracing::init_tracing,
 };
 
-use opentelemetry_otlp::WithExportConfig;
 use serde_json::json;
 use tokio::net::TcpListener;
 use tower_cookies::CookieManagerLayer;
-use tower_http::trace::{TraceLayer};
-use tracing::{Level};
-use tracing_subscriber::{
-    layer::{SubscriberExt},
-    util::SubscriberInitExt, Layer, Registry,
-};
+use tower_http::trace::TraceLayer;
+use tracing::Level;
+
+use cook_book::error::Result;
 
 #[tracing::instrument(skip_all)]
 async fn hello_ok(ctx: Ctx) -> impl IntoResponse {
@@ -34,6 +31,11 @@ async fn hello_ok(ctx: Ctx) -> impl IntoResponse {
 #[tracing::instrument(skip_all, fields(user.id = ctx.user_id()))]
 async fn auth_hello_ok(ctx: Ctx) -> impl IntoResponse {
     tracing::info!("{ctx:?}");
+
+    tracing::error!(
+        "something bad happened to user: {user:?}",
+        user = ctx.user_id()
+    );
 
     _ok().await
 }
@@ -46,31 +48,10 @@ async fn _ok() -> impl IntoResponse {
     (StatusCode::OK, Html("<h1>Hello, World!</h1>"))
 }
 
-#[tokio::main]
-async fn main() {
-    // Enable tracing.
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(String::from("https://localhost:4317")),
-        )
-        .install_batch(opentelemetry_sdk::runtime::Tokio)
-        .expect("Failed creating the tracer!");
-
-    Registry::default()
-        // Logging layer, allowing `log` crate to be used.
-        // Filter will use the requested level.
-        // Or default to INFO if one is not provided.
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "cbk=debug,tower_http=debug,axum=trace".into()),
-        )
-        .with(tracing_subscriber::fmt::layer().without_time())
-        .with(tracing_opentelemetry::layer().with_tracer(tracer))
-        .init();
+    init_tracing()?;
 
     let routes_api: Router = Router::new()
         .route("/aok", get(auth_hello_ok))
@@ -104,8 +85,10 @@ async fn main() {
 
     // Create a `TcpListener` using tokio.
     let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
-    println!("Listening on: {:?}", listener.local_addr());
+    println!("Listening on: {:?}", listener.local_addr().expect("valid addr"));
     axum::serve(listener, app).await.unwrap();
+
+    Ok(())
 }
 
 async fn main_response_mapper(ctx: Ctx, uri: Uri, req_method: Method, res: Response) -> Response {
