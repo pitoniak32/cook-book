@@ -1,4 +1,3 @@
-use crate::ctx::Ctx;
 use crate::error::{Error, Result};
 use crate::middle_ware::AUTH_TOKEN;
 use axum::routing::post;
@@ -12,11 +11,7 @@ pub fn routes() -> Router {
 }
 
 #[tracing::instrument(skip_all)]
-async fn api_login(
-    _ctx: Ctx,
-    cookies: Cookies,
-    payload: Json<LoginPayload>,
-) -> Result<Json<Value>> {
+async fn api_login(cookies: Cookies, payload: Json<LoginPayload>) -> Result<Json<Value>> {
     println!("->> {:<12} - api_login", "HANDLER");
 
     // TODO: Implement real db/auth logic.

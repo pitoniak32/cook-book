@@ -2,6 +2,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
+use crate::middle_ware::auth::CtxExtError;
+
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Clone, Debug, Serialize, strum_macros::AsRefStr)]
@@ -15,8 +17,13 @@ pub enum Error {
     AuthFailCtxNotInRequestExt,
     AuthFailNoUserIdInCtxRequestExt,
 
+    CtxExt(CtxExtError),
+
     // -- Model errors.
     TicketDeleteFailIdNotFound { id: u64 },
+
+    // -- General errors.
+    ReqStampNotInResponseExt,
 }
 
 // region:    --- Error Boilerplate

@@ -33,6 +33,7 @@ strum_macros = "0.25.3"
 uuid = { version = "1", features = ["v4", "fast-rng"] }
 opentelemetry-semantic-conventions = "0.13.0"
 opentelemetry = "0.21.0"
+time = "0.3.31"
 
 
 [dev-dependencies]

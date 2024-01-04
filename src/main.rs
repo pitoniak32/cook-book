@@ -11,7 +11,10 @@ use cook_book::{
     ctx::Ctx,
     error::Error,
     log_request,
-    middle_ware::auth::{ctx_resolver, require_auth},
+    middle_ware::{
+        auth::{ctx_resolver, require_auth},
+        req_stamp::{self, ReqStamp},
+    },
     routes_login,
 };
 
@@ -24,14 +27,15 @@ use tracing::Level;
 use cook_book::error::Result;
 
 #[tracing::instrument(skip_all)]
-async fn hello_ok(ctx: Ctx) -> impl IntoResponse {
-    tracing::info!("{ctx:?}");
+async fn hello_ok(req_stamp: ReqStamp) -> impl IntoResponse {
+    tracing::info!("{req_stamp:?}");
     _ok().await
 }
 
 #[tracing::instrument(skip_all, fields(user.id = ctx.user_id()))]
-async fn auth_hello_ok(ctx: Ctx) -> impl IntoResponse {
+async fn auth_hello_ok(ctx: Ctx, req_stamp: ReqStamp) -> impl IntoResponse {
     tracing::info!("{ctx:?}");
+    tracing::info!("{req_stamp:?}");
 
     tracing::error!(
         "something bad happened to user: {user:?}",
@@ -65,19 +69,30 @@ async fn main() -> Result<()> {
         .merge(crate::routes_login::routes())
         .nest("/api", routes_api)
         .layer(middleware::map_response(main_response_mapper))
+        .layer(middleware::from_fn(ctx_resolver))
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
-                tracing::span!(
-                    Level::DEBUG,
-                    "request",
-                    method = %request.method(),
-                    uri = %request.uri(),
-                    version = ?request.version(),
-                    req_uuid = %request.extensions().get::<Ctx>().map(|r| r.req_uuid().to_string()).unwrap_or("None".to_string()),
-                )
+                if let Some(stamp) = request.extensions().get::<ReqStamp>() {
+                    tracing::span!(
+                        Level::DEBUG,
+                        "request",
+                        method = %request.method(),
+                        uri = %request.uri(),
+                        version = ?request.version(),
+                        req_uuid = %stamp.uuid.to_string(),
+                    )
+                } else {
+                    tracing::span!(
+                        Level::DEBUG,
+                        "request",
+                        method = %request.method(),
+                        uri = %request.uri(),
+                        version = ?request.version(),
+                    )
+                }
             }),
         )
-        .layer(middleware::from_fn(ctx_resolver))
+        .layer(middleware::from_fn(req_stamp::request_stamp))
         .layer(CookieManagerLayer::new());
 
     // Create a `TcpListener` using tokio.
@@ -93,7 +108,13 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn main_response_mapper(ctx: Ctx, uri: Uri, req_method: Method, res: Response) -> Response {
+async fn main_response_mapper(
+    ctx: Option<Ctx>,
+    req_stamp: ReqStamp,
+    uri: Uri,
+    req_method: Method,
+    res: Response,
+) -> Response {
     println!("->> {:<12} - main_response_mapper", "RES_MAPPER");
     // -- Get the eventual response error.
     let service_error = res.extensions().get::<Error>();
@@ -106,7 +127,7 @@ async fn main_response_mapper(ctx: Ctx, uri: Uri, req_method: Method, res: Respo
             let client_error_body = json!({
                 "error": {
                     "type": client_error.as_ref(),
-                    "req_uuid": ctx.req_uuid().to_string(),
+                    "req_uuid": req_stamp.uuid.to_string(),
                 }
             });
 
@@ -119,7 +140,8 @@ async fn main_response_mapper(ctx: Ctx, uri: Uri, req_method: Method, res: Respo
     // Build and log the server log line.
     let client_error = client_status_error.unzip().1;
     // TODO: Need to hander if log_request fail (but should not fail request)
-    let _ = log_request::log_req(req_method, uri, ctx, service_error, client_error).await;
+    let _ =
+        log_request::log_req(req_method, uri, ctx, req_stamp, service_error, client_error).await;
 
     println!();
     error_response.unwrap_or(res)
